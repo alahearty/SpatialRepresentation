@@ -10,9 +10,11 @@
         });
     },
     template: `
-    <div class="bg-white rounded-lg shadow p-4 sm:p-6">
-      <h3 class="font-bold text-base sm:text-lg mb-4">{{ title }}</h3>
-      <canvas ref="chart" height="100"></canvas>
+  <div class="bg-white rounded-lg shadow p-4 sm:p-6 flex flex-col h-full min-h-[320px]">
+    <h3 class="font-bold text-base sm:text-lg mb-4">{{ title }}</h3>
+    <div class="flex-1 flex items-center justify-center">
+      <canvas ref="chart" style="width:100%;height:100%;max-height:340px;min-height:200px;"></canvas>
     </div>
-  `
+  </div>
+`
 };

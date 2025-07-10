@@ -1,6 +1,6 @@
 window.MapContainer = {
     name: 'MapContainer',
-    props: ['fields', 'boundary', 'visible', 'flowStations'],
+    props: ['fields', 'boundary', 'visible', 'flowStations', 'route'],
     emits: ['open-route-modal'],
     data() {
       return {
@@ -9,7 +9,9 @@ window.MapContainer = {
         boundaryLayer: null,
         _resizeTimeout: null,
         flowStationMarkers: [],
-        flowLines: []
+        flowLines: [],
+        routeLine: null,
+        routePopup: null
       };
     },
     watch: {
@@ -33,6 +35,10 @@ window.MapContainer = {
         deep: true
       },
       flowStations: {
+        handler() { this.renderMap(); },
+        deep: true
+      },
+      route: {
         handler() { this.renderMap(); },
         deep: true
       }
@@ -85,8 +91,10 @@ window.MapContainer = {
         this.flowStationMarkers = [];
         if (this.flowLines) this.flowLines.forEach(l => this.map.removeLayer(l));
         this.flowLines = [];
+        if (this.routeLine) { this.map.removeLayer(this.routeLine); this.routeLine = null; }
+        if (this.routePopup) { this.map.removeLayer(this.routePopup); this.routePopup = null; }
 
-        // Draw wells
+        // Draw wells (first)
         this.fields.forEach(field => {
           (field.wells || []).forEach(well => {
             if (well.location && well.location.lat && well.location.lng) {
@@ -101,7 +109,7 @@ window.MapContainer = {
           });
         });
 
-        // Draw flow stations as scalable circle markers
+        // Draw flow stations (second)
         if (this.flowStations && this.flowStations.length) {
           this.flowStations.forEach(fs => {
             if (fs.location && fs.location.lat && fs.location.lng) {
@@ -119,7 +127,7 @@ window.MapContainer = {
           });
         }
 
-        // Draw dotted, arrowed lines from each well to its flow station
+        // Draw flow lines/arrows (after markers)
         this.fields.forEach(field => {
           (field.wells || []).forEach(well => {
             if (well.location && well.location.lat && well.location.lng && well.flowStationId) {
@@ -155,12 +163,51 @@ window.MapContainer = {
           });
         });
 
+        // Draw route if present
+        if (this.route && this.route.source && this.route.dest) {
+          const src = this.route.source.location;
+          const dst = this.route.dest.location;
+          this.routeLine = L.polyline([
+            [src.lat, src.lng],
+            [dst.lat, dst.lng]
+          ], {
+            color: '#2563eb',
+            weight: 4,
+            opacity: 0.8
+          }).addTo(this.map);
+          // Add arrowhead if possible
+          if (window.L && L.polylineDecorator && L.Symbol && L.Symbol.arrowHead) {
+            const arrowHead = L.polylineDecorator(this.routeLine, {
+              patterns: [
+                {
+                  offset: '100%',
+                  repeat: 0,
+                  symbol: L.Symbol.arrowHead({ pixelSize: 16, polygon: false, pathOptions: { stroke: true, color: '#2563eb', weight: 4 } })
+                }
+              ]
+            });
+            arrowHead.addTo(this.map);
+          }
+          // Show popup with metadata at midpoint
+          const midLat = (src.lat + dst.lat) / 2;
+          const midLng = (src.lng + dst.lng) / 2;
+          const dist = this.route.distance > 1000 ? (this.route.distance/1000).toFixed(2) + ' km' : Math.round(this.route.distance) + ' m';
+          const time = this.route.time > 60 ? (this.route.time/60).toFixed(1) + ' hr' : Math.round(this.route.time) + ' min';
+          const meta = `<b>Route Info</b><br>From: ${this.route.source.name}<br>To: ${this.route.dest.name}<br>Distance: ${dist}<br>Est. Time: ${time}<br>Type: ${this.route.type}`;
+          this.routePopup = L.popup({ closeButton: false, autoClose: false })
+            .setLatLng([midLat, midLng])
+            .setContent(meta)
+            .openOn(this.map);
+        }
+
         // Draw boundary
         if (this.boundary && this.boundary.length > 2) {
           this.boundaryLayer = L.polygon(this.boundary.map(pt => [pt.lat, pt.lng]), {
             color: 'blue', weight: 3, fill: false
           }).addTo(this.map);
         }
+        // Force map redraw
+        this.map.invalidateSize();
       },
       openRouteModal() {
         this.$emit('open-route-modal');

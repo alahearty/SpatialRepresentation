@@ -136,6 +136,8 @@ createApp({
             }]
         });
 
+        const currentRoute = ref(null); // { source, dest, type, distance, time, meta }
+
         function updateCharts() {
             // Get current selections
             const selectedAsset = filters.value['Asset (OML)'];
@@ -225,25 +227,46 @@ createApp({
             };
         }
 
+        function updateFilters() {
+            // Asset (OML)
+            filters.value['Asset (OML)'] = assets.value.map(a => a.name);
+            // Field
+            let fieldsList = [];
+            if (filters.value['Asset (OML)'] && filters.value['Asset (OML)'].length && filters.value['Asset (OML)'].includes(filters.value['Asset (OML)'])) {
+                const asset = assets.value.find(a => a.name === filters.value['Asset (OML)']);
+                fieldsList = asset ? asset.fields : [];
+            } else {
+                fieldsList = assets.value.flatMap(a => a.fields);
+            }
+            filters.value['Field'] = fieldsList.map(f => f.name);
+            // Well
+            let wellsList = [];
+            if (filters.value['Field'] && filters.value['Field'].length && filters.value['Field'].includes(filters.value['Field'])) {
+                const field = fieldsList.find(f => f.name === filters.value['Field']);
+                wellsList = field ? field.wells : [];
+            } else {
+                wellsList = fieldsList.flatMap(f => f.wells);
+            }
+            filters.value['Well'] = wellsList.map(w => w.name);
+            // Well Status
+            const statuses = new Set(wellsList.map(w => w.status));
+            filters.value['Well Status'] = Array.from(statuses);
+        }
+
         function onFilterChange(key, value) {
             if (key === 'Asset (OML)') {
-                const asset = assets.value.find(a => a.name === value);
                 filters.value['Asset (OML)'] = value;
                 filters.value['Field'] = '';
                 filters.value['Well'] = '';
-                filters.value['Field'] = asset ? asset.fields.map(f => f.name) : [];
-                filters.value['Well'] = [];
             } else if (key === 'Field') {
                 filters.value['Field'] = value;
-                const asset = assets.value.find(a => a.name === filters.value['Asset (OML)']);
-                const field = asset ? asset.fields.find(f => f.name === value) : null;
-                filters.value['Well'] = field ? field.wells.map(w => w.name) : [];
-                filters.value['Well'] = [];
+                filters.value['Well'] = '';
             } else if (key === 'Well') {
                 filters.value['Well'] = value;
             } else if (key === 'Well Status') {
                 filters.value['Well Status'] = value;
             }
+            updateFilters();
             updateCharts();
             // For now, just log
             console.log('Filter', key, value);
@@ -261,10 +284,38 @@ createApp({
         function openRouteModal() { showRouteModal.value = true; }
         function closeRouteModal() { showRouteModal.value = false; }
         function handleCreateRoute({ source, dest, type }) {
-            if (window.chrome && window.chrome.webview) {
-                const message = `ROUTE_REQUEST:${source}:${dest}:${type}`;
-                window.chrome.webview.postMessage(message);
-            }
+            // Find wells by id
+            const allWells = assets.value.flatMap(a => a.fields.flatMap(f => f.wells));
+            const src = allWells.find(w => w.name === source || w.id === source);
+            const dst = allWells.find(w => w.name === dest || w.id === dest);
+            if (!src || !dst) return;
+            // Calculate distance (Haversine formula)
+            function toRad(x) { return x * Math.PI / 180; }
+            const R = 6371e3; // meters
+            const φ1 = toRad(src.location.lat), φ2 = toRad(dst.location.lat);
+            const Δφ = toRad(dst.location.lat - src.location.lat);
+            const Δλ = toRad(dst.location.lng - src.location.lng);
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            const distance = R * c; // meters
+            // Estimate time (simple): walking 5km/h, driving 50km/h, cycling 15km/h
+            let speed = 5; // km/h
+            if (type === 'driving') speed = 50;
+            else if (type === 'cycling') speed = 15;
+            const timeHrs = distance / 1000 / speed;
+            const timeMin = timeHrs * 60;
+            // Store route info
+            currentRoute.value = {
+                source: src,
+                dest: dst,
+                type,
+                distance,
+                time: timeMin,
+                meta: {
+                    start: src.location,
+                    end: dst.location
+                }
+            };
         }
 
         // Expose for C# integration
@@ -273,10 +324,11 @@ createApp({
 
         // Call updateCharts initially
         updateCharts();
+        updateFilters(); // Call updateFilters initially
 
         return {
             fields, wells, boundary, showRouteModal, handleCreateRoute, filteredFields, closeRouteModal, filters, onFilterChange, activeTab, handleFieldChange,
-            assetChart, fieldChart, wellChart, productionChart, campaignChart, topWellsChart, flowStations
+            assetChart, fieldChart, wellChart, productionChart, campaignChart, topWellsChart, flowStations, currentRoute
         };
     },
     mounted() {
@@ -301,7 +353,7 @@ createApp({
         <!-- Tab Content -->
         <main class="flex-1 flex flex-col space-y-4 w-full">
           <template v-if="activeTab === 'Map'">
-            <MapContainer :fields="filteredFields" :boundary="boundary" :visible="activeTab === 'Map'" :flowStations="flowStations" @open-route-modal="showRouteModal = true" class="flex-1 min-h-[300px] h-[40vh] md:h-[60vh]" />
+            <MapContainer :fields="filteredFields" :boundary="boundary" :visible="activeTab === 'Map'" :flowStations="flowStations" :route="currentRoute" @open-route-modal="showRouteModal = true" class="flex-1 min-h-[300px] h-[40vh] md:h-[60vh]" />
           </template>
           <template v-else-if="activeTab === 'Routing'">
             <div class="flex flex-col items-center justify-center h-full py-10">
