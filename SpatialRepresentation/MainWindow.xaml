@@ -6,31 +6,8 @@
         xmlns:local="clr-namespace:SpatialRepresentation"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         mc:Ignorable="d"
-        Title="Spatial Representation - Wells and Fields" Height="800" Width="1200">
+        Title="Spatial Representation - Wells and Fields" Height="800" Width="1200" WindowState="Maximized">
     <Grid>
-        <!--<Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
-
-        -->
-        <!-- WPF Controls for Map Actions -->
-        <!--
-        <StackPanel Orientation="Horizontal" Margin="10" Grid.Row="0" VerticalAlignment="Top">
-            <Label Content="Field:" VerticalAlignment="Center" Margin="5,0"/>
-            <ComboBox x:Name="cmbFieldSelector" Width="180" Margin="5" SelectionChanged="cmbFieldSelector_SelectionChanged"/>
-            <Label Content="Upload:" VerticalAlignment="Center" Margin="5,0"/>
-            <TextBox x:Name="txtUploadFile" Width="180" Margin="5" IsReadOnly="True"/>
-            <Button Content="Choose File" x:Name="btnChooseFile" Margin="5" Click="BtnChooseFile_Click"/>
-            <Button Content="Upload" x:Name="btnUpload" Margin="5" Click="BtnUpload_Click"/>
-            <Button Content="Export GeoJSON" x:Name="btnExportGeoJson" Margin="5" Click="BtnExportGeoJson_Click"/>
-            <Button Content="Route Wells" x:Name="btnRouteWells" Margin="5" Click="BtnRouteWells_Click"/>
-            <Button Content="Info" x:Name="btnInfo" Margin="5" Click="BtnInfo_Click"/>
-            <Button Content="Routes" x:Name="btnRoutes" Margin="5" Click="BtnRoutes_Click"/>
-            <Button Content="Show Statistics" x:Name="btnShowStatistics" Margin="5" Click="BtnShowStatistics_Click"/>
-        </StackPanel>-->
-
-        <!-- WebView2 for Map Display -->
         <wv2:WebView2 x:Name="webView" Grid.Row="1" NavigationCompleted="WebView_NavigationCompleted"/>
     </Grid>
 </Window>

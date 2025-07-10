@@ -162,6 +162,16 @@ namespace SpatialRepresentation.Models
         public string GeologicDescription { get; set; }
 
         /// <summary>
+        /// The ID of the flow station this well pumps to
+        /// </summary>
+        public string FlowStationId { get; set; }
+
+        /// <summary>
+        /// The name of the flow station this well pumps to (for display)
+        /// </summary>
+        public string FlowStationName { get; set; }
+
+        /// <summary>
         /// Default constructor
         /// </summary>
         public Well()
