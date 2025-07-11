@@ -29,7 +29,6 @@ createApp({
         wells = ref([]);
         boundary = ref([]);
         flowStations = ref([]);
-        const showRouteModal = ref(false);
         filteredFields = ref([]);
         const filters = ref({
             'Asset (OML)': ['OML 1', 'OML 2', 'OML 3'],
@@ -261,16 +260,6 @@ createApp({
             }
         }
 
-        function openRouteModal() { showRouteModal.value = true; }
-        function closeRouteModal() { showRouteModal.value = false; }
-
-        function handleAppHeaderEvent(event) {
-            console.log('AppHeader event:', event);
-            if (event === 'open-route-modal') {
-                openRouteModal();
-            }
-        }
-
         function handleCreateRoute({ source, dest, type }) {
             // Calculate distance and time
             const sourceWell = wells.value.find(w => w.name === source);
@@ -318,14 +307,110 @@ createApp({
         const showInfoModal = ref(false);
         const showRoutesModal = ref(false);
         const showStatisticsModal = ref(false);
+        const showRouteModal = ref(false);
+        const infoType = ref('field');
+        const infoData = ref(null);
 
-        function openInfoModal() { showInfoModal.value = true; }
-        function openRoutesModal() { showRoutesModal.value = true; }
-        function openStatisticsModal() { showStatisticsModal.value = true; }
+        function closeAllModals() {
+            showInfoModal.value = false;
+            showRoutesModal.value = false;
+            showStatisticsModal.value = false;
+            showRouteModal.value = false;
+        }
 
+        function openInfoModal(type = 'field', data = null) {
+            closeAllModals();
+            // Default to first field or well if not provided
+            let selectedType = type;
+            let selectedData = data;
+            if (!selectedData) {
+                if (selectedType === 'field' && fields.value && fields.value.length > 0) {
+                    selectedData = fields.value[0];
+                } else if (selectedType === 'well' && wells.value && wells.value.length > 0) {
+                    selectedData = wells.value[0];
+                } else if (fields.value && fields.value.length > 0) {
+                    selectedType = 'field';
+                    selectedData = fields.value[0];
+                } else if (wells.value && wells.value.length > 0) {
+                    selectedType = 'well';
+                    selectedData = wells.value[0];
+                }
+            }
+            if (!selectedData) {
+                console.error('No data available for InfoModal');
+                alert('No data available for InfoModal.');
+                return;
+            }
+            infoType.value = selectedType;
+            infoData.value = selectedData;
+            showInfoModal.value = true;
+        }
+        function openRoutesModal() {
+            closeAllModals();
+            showRoutesModal.value = true;
+        }
+        function openStatisticsModal() {
+            closeAllModals();
+            showStatisticsModal.value = true;
+        }
+        function openRouteModal() {
+            closeAllModals();
+            showRouteModal.value = true;
+        }
         function closeInfoModal() { showInfoModal.value = false; }
         function closeRoutesModal() { showRoutesModal.value = false; }
         function closeStatisticsModal() { showStatisticsModal.value = false; }
+        function closeRouteModal() { showRouteModal.value = false; }
+
+        function handleAppHeaderEvent(event) {
+            if (event === 'open-route-modal') {
+                openRouteModal();
+            } else if (event === 'show-statistics') {
+                openStatisticsModal();
+            } else if (event === 'show-info') {
+                openInfoModal();
+            } else if (event === 'show-routes') {
+                openRoutesModal();
+            }
+        }
+
+        // Add more advanced analytics and chart types
+        const wellStatusPieChart = ref({
+            labels: ['Active', 'Inactive', 'Abandoned'],
+            datasets: [{
+                label: 'Well Status',
+                data: [20, 5, 2],
+                backgroundColor: ['#22c55e', '#eab308', '#ef4444']
+            }]
+        });
+        const productionByAssetDoughnut = ref({
+            labels: ['Asset 1', 'Asset 2', 'Asset 3'],
+            datasets: [{
+                label: 'Production (bbl)',
+                data: [12000, 18000, 9000],
+                backgroundColor: ['#3b82f6', '#22c55e', '#eab308']
+            }]
+        });
+        const fieldBreakdownRadar = ref({
+            labels: ['Field A', 'Field B', 'Field C'],
+            datasets: [{
+                label: 'Wells per Field',
+                data: [12, 8, 15],
+                backgroundColor: 'rgba(59,130,246,0.2)',
+                borderColor: '#3b82f6',
+                pointBackgroundColor: '#3b82f6'
+            }]
+        });
+        const topWellsLineChart = ref({
+            labels: ['Well 1', 'Well 2', 'Well 3', 'Well 4', 'Well 5'],
+            datasets: [{
+                label: 'Production (bbl)',
+                data: [1300, 1250, 1200, 1100, 1050],
+                borderColor: '#f43f5e',
+                backgroundColor: 'rgba(244,63,94,0.2)',
+                fill: true
+            }]
+        });
 
         return {
             fields,
@@ -347,6 +432,8 @@ createApp({
             showInfoModal,
             showRoutesModal,
             showStatisticsModal,
+            infoType,
+            infoData,
             updateCharts,
             updateFilters,
             onFilterChange,
@@ -360,7 +447,11 @@ createApp({
             openStatisticsModal,
             closeInfoModal,
             closeRoutesModal,
-            closeStatisticsModal
+            closeStatisticsModal,
+            wellStatusPieChart,
+            productionByAssetDoughnut,
+            fieldBreakdownRadar,
+            topWellsLineChart
         };
     },
     mounted() {
@@ -389,19 +480,23 @@ createApp({
               <div class="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 <AnalyticsPanel :chartData="fieldChart" title="Wells per Field (Bar)" type="bar" />
                 <AnalyticsPanel :chartData="wellChart" title="Well Status Distribution (Bar)" type="bar" />
-                <AnalyticsPanel :chartData="productionChart" title="Monthly Production" type="line" />
-                <AnalyticsPanel :chartData="assetChart" title="Production by Asset" type="bar" />
-                <AnalyticsPanel :chartData="campaignChart" title="Campaign Budgets" type="radar" />
-                <AnalyticsPanel :chartData="topWellsChart" title="Top Producing Wells" type="bar" />
+                <AnalyticsPanel :chartData="productionChart" title="Monthly Production (Line)" type="line" />
+                <AnalyticsPanel :chartData="assetChart" title="Production by Asset (Bar)" type="bar" />
+                <AnalyticsPanel :chartData="campaignChart" title="Campaign Budgets (Radar)" type="radar" />
+                <AnalyticsPanel :chartData="topWellsChart" title="Top Producing Wells (Bar)" type="bar" />
+                <AnalyticsPanel :chartData="wellStatusPieChart" title="Well Status (Pie)" type="pie" />
+                <AnalyticsPanel :chartData="productionByAssetDoughnut" title="Production by Asset (Doughnut)" type="doughnut" />
+                <AnalyticsPanel :chartData="fieldBreakdownRadar" title="Field Breakdown (Radar)" type="radar" />
+                <AnalyticsPanel :chartData="topWellsLineChart" title="Top Producing Wells (Line)" type="line" />
               </div>
             </div>
           </template>
         </main>
       </div>
-      <RouteModal :wells="(wells && wells.length) ? wells : [{id: 'dummy1', name: 'Well Alpha'}, {id: 'dummy2', name: 'Well Beta'}]" :show="showRouteModal" @close="closeRouteModal" @create-route="handleCreateRoute" />
-      <InfoModal :show="showInfoModal" @close="closeInfoModal" />
+      <RouteModal :wells="wells" :show="showRouteModal" @close="closeRouteModal" @create-route="handleCreateRoute" />
+      <InfoModal :show="showInfoModal" :infoType="infoType" :infoData="infoData" @close="closeInfoModal" />
       <RoutesModal :show="showRoutesModal" @close="closeRoutesModal" />
-      <StatisticsModal :show="showStatisticsModal" @close="closeStatisticsModal" />
+      <StatisticsModal :show="showStatisticsModal" :statsData="{ assets }" @close="closeStatisticsModal" />
     </div>
   `
 }).mount('#app');

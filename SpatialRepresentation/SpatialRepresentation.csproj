@@ -135,14 +135,18 @@
     <Content Include="Resources\components\Sidebar.js">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-    <Content Include="Resources\modals\InfoModal.js" />
+    <Content Include="Resources\modals\InfoModal.js">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
     <Content Include="Resources\main.js">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
     <Content Include="Resources\index.html">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-    <Content Include="Resources\modals\StatisticsModal.js" />
+    <Content Include="Resources\modals\StatisticsModal.js">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
     <Content Include="Resources\styles.css">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>

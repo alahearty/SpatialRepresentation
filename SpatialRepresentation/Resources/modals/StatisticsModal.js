@@ -5,10 +5,16 @@ window.StatisticsModal = {
     props: ['show', 'statsType', 'statsData'],
     emits: ['close'],
     template: `
-      <div v-if="show" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+      <div v-if="show" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50" style="z-index: 9999;">
         <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl">
           <h3 class="text-xl font-bold mb-4">📊 Statistics</h3>
-          <div v-if="statsType === 'field' && statsData">
+          <div v-if="!statsType && statsData && statsData.assets">
+            <div class="mb-2"><b>Total Assets:</b> {{ statsData.assets.length }}</div>
+            <div class="mb-2"><b>Total Fields:</b> {{ statsData.assets.reduce((sum, a) => sum + (a.fields ? a.fields.length : 0), 0) }}</div>
+            <div class="mb-2"><b>Total Wells:</b> {{ statsData.assets.reduce((sum, a) => sum + a.fields.reduce((fSum, f) => fSum + (f.wells ? f.wells.length : 0), 0), 0) }}</div>
+            <!-- Add more summary stats here -->
+          </div>
+          <div v-else-if="statsType === 'field' && statsData">
             <div class="mb-2"><b>Field:</b> {{ statsData.name || statsData.fieldName }}</div>
             <div class="mb-2"><b>Total Wells:</b> {{ statsData.wells ? statsData.wells.length : 0 }}</div>
             <div class="mb-2"><b>Total Production:</b> {{ statsData.totalProduction }}</div>
