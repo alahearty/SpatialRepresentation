@@ -8,6 +8,6 @@
         mc:Ignorable="d"
         Title="Spatial Representation - Wells and Fields" Height="800" Width="1200" WindowState="Maximized">
     <Grid>
-        <wv2:WebView2 x:Name="webView" Grid.Row="1" NavigationCompleted="WebView_NavigationCompleted"/>
+        <wv2:WebView2 x:Name="webView" NavigationCompleted="WebView_NavigationCompleted" />
     </Grid>
 </Window>

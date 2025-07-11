@@ -1,9 +1,10 @@
 // Define loadData BEFORE Vue app is created, so C# can always call it
-let fields, wells, boundary, filteredFields;
+let fields, wells, boundary, filteredFields, flowStations;
 window.loadData = (data) => {
-    if (fields && wells && boundary && filteredFields) {
+    if (fields && wells && boundary && filteredFields && flowStations) {
         fields.value = data.fields || [];
         boundary.value = data.concessionBoundary || [];
+        flowStations.value = data.flowStations || [];
         wells.value = [];
         fields.value.forEach(f => (f.wells || []).forEach(w => wells.value.push(w)));
         filteredFields.value = fields.value;
@@ -27,6 +28,7 @@ createApp({
         fields = ref([]);
         wells = ref([]);
         boundary = ref([]);
+        flowStations = ref([]);
         const showRouteModal = ref(false);
         filteredFields = ref([]);
         const filters = ref({
@@ -36,13 +38,6 @@ createApp({
             'Well Status': ['Active', 'Inactive', 'Abandoned'],
         });
         const activeTab = ref('Map');
-
-        // Mock flow stations with coordinates (distinct clusters for each field)
-        const flowStations = ref([
-            { id: 'FS1', name: 'Flow Station Alpha', field: 'Field A', location: { lat: 5.55, lng: 7.05 } }, // Cluster 1 (near Enugu)
-            { id: 'FS2', name: 'Flow Station Beta', field: 'Field B', location: { lat: 5.35, lng: 6.25 } },  // Cluster 2 (near Warri)
-            { id: 'FS3', name: 'Flow Station Gamma', field: 'Field C', location: { lat: 5.95, lng: 6.45 } }  // Cluster 3 (near Makurdi)
-        ]);
 
         // Expanded mock hierarchical data with many wells per field, each linked to a flow station in the same field and close in coordinates
         const assets = ref([
@@ -251,161 +246,126 @@ createApp({
                 wellsList = fieldsList.flatMap(f => f.wells);
             }
             filters.value['Well'] = wellsList.map(w => w.name);
-            // Well Status
-            const statuses = new Set(wellsList.map(w => w.status));
-            filters.value['Well Status'] = Array.from(statuses);
         }
 
         function onFilterChange(key, value) {
-            if (key === 'Asset (OML)') {
-                filters.value['Asset (OML)'] = value;
-                filters.value['Field'] = '';
-                filters.value['Well'] = '';
-            } else if (key === 'Field') {
-                filters.value['Field'] = value;
-                filters.value['Well'] = '';
-            } else if (key === 'Well') {
-                filters.value['Well'] = value;
-            } else if (key === 'Well Status') {
-                filters.value['Well Status'] = value;
-            }
+            filters.value[key] = value;
             updateFilters();
             updateCharts();
-            // For now, just log
-            console.log('Filter', key, value);
         }
 
         function handleFieldChange(fieldName) {
-            if (!fieldName) {
-                filteredFields.value = fields.value;
-            } else {
-                filteredFields.value = fields.value.filter(f => f.name === fieldName || f.fieldName === fieldName);
+            // Emit field selection event to C#
+            if (window.chrome && window.chrome.webview) {
+                window.chrome.webview.postMessage(`FIELD_SELECTED:${fieldName}`);
             }
         }
 
-        // Modal logic
         function openRouteModal() { showRouteModal.value = true; }
         function closeRouteModal() { showRouteModal.value = false; }
+
         function handleAppHeaderEvent(event) {
-            if (event === 'open-route-modal') openRouteModal();
-            if (event === 'show-info') showInfoModal.value = true;
-            if (event === 'show-routes') showRoutesModal.value = true;
-            if (event === 'show-statistics') showStatisticsModal.value = true;
+            console.log('AppHeader event:', event);
+            if (event === 'open-route-modal') {
+                openRouteModal();
+            }
         }
+
         function handleCreateRoute({ source, dest, type }) {
-            // Find wells by id
-            const allWells = assets.value.flatMap(a => a.fields.flatMap(f => f.wells));
-            const src = allWells.find(w => w.name === source || w.id === source);
-            const dst = allWells.find(w => w.name === dest || w.id === dest);
-            if (!src || !dst) return;
-            // Calculate distance (Haversine formula)
-            function toRad(x) { return x * Math.PI / 180; }
-            const R = 6371e3; // meters
-            const φ1 = toRad(src.location.lat), φ2 = toRad(dst.location.lat);
-            const Δφ = toRad(dst.location.lat - src.location.lat);
-            const Δλ = toRad(dst.location.lng - src.location.lng);
-            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-            const distance = R * c; // meters
-            // Estimate time (simple): walking 5km/h, driving 50km/h, cycling 15km/h
-            let speed = 5; // km/h
-            if (type === 'driving') speed = 50;
-            else if (type === 'cycling') speed = 15;
-            const timeHrs = distance / 1000 / speed;
-            const timeMin = timeHrs * 60;
-            // Store route info
-            currentRoute.value = {
-                source: src,
-                dest: dst,
-                type,
-                distance,
-                time: timeMin,
-                meta: {
-                    start: src.location,
-                    end: dst.location
+            // Calculate distance and time
+            const sourceWell = wells.value.find(w => w.name === source);
+            const destWell = wells.value.find(w => w.name === dest);
+            
+            if (sourceWell && destWell) {
+                function toRad(x) { return x * Math.PI / 180; }
+                const R = 6371; // Earth's radius in km
+                const dLat = toRad(destWell.location.lat - sourceWell.location.lat);
+                const dLng = toRad(destWell.location.lng - sourceWell.location.lng);
+                const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                         Math.cos(toRad(sourceWell.location.lat)) * Math.cos(toRad(destWell.location.lat)) *
+                         Math.sin(dLng/2) * Math.sin(dLng/2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                const distance = R * c;
+                
+                // Estimate travel time (assuming 30 km/h average speed)
+                const timeHours = distance / 30;
+                const timeMinutes = Math.round(timeHours * 60);
+                
+                currentRoute.value = {
+                    source,
+                    dest,
+                    type,
+                    distance: Math.round(distance * 100) / 100,
+                    time: timeMinutes,
+                    meta: {
+                        sourceWell: sourceWell.name,
+                        destWell: destWell.name,
+                        sourceLocation: sourceWell.location,
+                        destLocation: destWell.location
+                    }
+                };
+                
+                // Send route request to C#
+                if (window.chrome && window.chrome.webview) {
+                    window.chrome.webview.postMessage(`ROUTE_REQUEST:${source}:${dest}:${type}`);
                 }
-            };
+                
+                closeRouteModal();
+            }
         }
 
-        // Expose for C# integration
-        window.filterByField = handleFieldChange;
-        window.showRouteModal = openRouteModal;
-
-        updateCharts();
-        updateFilters();
-
-        // Wells per Field Pie Chart
-        const wellsPerFieldPieChart = ref({
-            labels: ['Field A', 'Field B', 'Field C'],
-            datasets: [{
-                label: 'Wells',
-                data: [4, 4, 4],
-                backgroundColor: ['#f59e42', '#10b981', '#6366f1']
-            }]
-        });
-        // Well Status Distribution Pie Chart
-        const wellStatusPieChart = ref({
-            labels: ['Active', 'Inactive', 'Abandoned'],
-            datasets: [{
-                label: 'Wells',
-                data: [6, 3, 3],
-                backgroundColor: ['#22c55e', '#eab308', '#ef4444']
-            }]
-        });
-        // Active Wells Over Time Line Chart
-        const activeWellsOverTimeChart = ref({
-            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May'],
-            datasets: [{
-                label: 'Active Wells',
-                data: [8, 9, 10, 11, 12],
-                borderColor: '#3b82f6',
-                backgroundColor: 'rgba(59,130,246,0.2)',
-                fill: true
-            }]
-        });
-        // Production by Well Status Stacked Bar Chart
-        const productionByStatusChart = ref({
-            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May'],
-            datasets: [
-                {
-                    label: 'Active',
-                    data: [5000, 6000, 7000, 8000, 9000],
-                    backgroundColor: '#22c55e',
-                    stack: 'Status'
-                },
-                {
-                    label: 'Inactive',
-                    data: [1000, 1200, 1100, 1300, 1250],
-                    backgroundColor: '#eab308',
-                    stack: 'Status'
-                },
-                {
-                    label: 'Abandoned',
-                    data: [200, 300, 250, 400, 350],
-                    backgroundColor: '#ef4444',
-                    stack: 'Status'
-                }
-            ]
-        });
-
+        // Modal state
         const showInfoModal = ref(false);
         const showRoutesModal = ref(false);
         const showStatisticsModal = ref(false);
+
+        function openInfoModal() { showInfoModal.value = true; }
+        function openRoutesModal() { showRoutesModal.value = true; }
+        function openStatisticsModal() { showStatisticsModal.value = true; }
+
         function closeInfoModal() { showInfoModal.value = false; }
         function closeRoutesModal() { showRoutesModal.value = false; }
         function closeStatisticsModal() { showStatisticsModal.value = false; }
 
         return {
-            fields, wells, boundary, showRouteModal, handleCreateRoute, filteredFields, closeRouteModal, filters, onFilterChange, activeTab, handleFieldChange,
-            assetChart, fieldChart, wellChart, productionChart, campaignChart, topWellsChart, flowStations, currentRoute, wellsPerFieldPieChart, wellStatusPieChart, activeWellsOverTimeChart, productionByStatusChart,
-            showInfoModal, showRoutesModal, showStatisticsModal, closeInfoModal, closeRoutesModal, closeStatisticsModal
+            fields,
+            wells,
+            boundary,
+            flowStations,
+            filteredFields,
+            filters,
+            activeTab,
+            assets,
+            showRouteModal,
+            currentRoute,
+            topWellsChart,
+            assetChart,
+            fieldChart,
+            wellChart,
+            productionChart,
+            campaignChart,
+            showInfoModal,
+            showRoutesModal,
+            showStatisticsModal,
+            updateCharts,
+            updateFilters,
+            onFilterChange,
+            handleFieldChange,
+            openRouteModal,
+            closeRouteModal,
+            handleAppHeaderEvent,
+            handleCreateRoute,
+            openInfoModal,
+            openRoutesModal,
+            openStatisticsModal,
+            closeInfoModal,
+            closeRoutesModal,
+            closeStatisticsModal
         };
     },
     mounted() {
-        // Notify C# that the map/dashboard is ready
-        if (window.chrome && window.chrome.webview) {
-            window.chrome.webview.postMessage('MAP_READY');
-        }
+        updateFilters();
+        updateCharts();
     },
     template: `
     <div class="min-h-screen bg-gray-100 flex flex-col">
@@ -418,23 +378,19 @@ createApp({
       <!-- Main Content -->
       <div class="flex flex-1 flex-col lg:flex-row px-2 sm:px-6 py-4 space-y-4 lg:space-y-0 lg:space-x-4 w-full">
         <!-- Sidebar -->
-        <Sidebar :fields="fields" :filters="filters" :onFilterChange="onFilterChange" class="w-full lg:w-72" />
+        <Sidebar :fields="fields" :filters="filters" :onFilterChange="onFilterChange" @field-selected="handleFieldChange" class="w-full lg:w-72" />
         <!-- Tab Content -->
         <main class="flex-1 flex flex-col space-y-4 w-full">
           <template v-if="activeTab === 'Map'">
-            <MapContainer :fields="filteredFields" :boundary="boundary" :visible="true" :flowStations="flowStations" :route="currentRoute" @open-route-modal="showRouteModal = true" class="flex-1 min-h-[300px] h-[40vh] md:h-[60vh]" />
+            <MapContainer :fields="filteredFields" :boundary="boundary" :visible="true" :flowStations="flowStations" :route="currentRoute" :fieldFilter="filters['Field']" @open-route-modal="showRouteModal = true" class="flex-1 min-h-[300px] h-[40vh] md:h-[60vh]" />
           </template>
           <template v-else-if="activeTab === 'Analytics'">
             <div class="flex flex-col items-center w-full">
               <div class="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 <AnalyticsPanel :chartData="fieldChart" title="Wells per Field (Bar)" type="bar" />
-                <AnalyticsPanel :chartData="wellsPerFieldPieChart" title="Wells per Field (Pie)" type="pie" />
                 <AnalyticsPanel :chartData="wellChart" title="Well Status Distribution (Bar)" type="bar" />
-                <AnalyticsPanel :chartData="wellStatusPieChart" title="Well Status Distribution (Pie)" type="pie" />
                 <AnalyticsPanel :chartData="productionChart" title="Monthly Production" type="line" />
-                <AnalyticsPanel :chartData="activeWellsOverTimeChart" title="Active Wells Over Time" type="line" />
                 <AnalyticsPanel :chartData="assetChart" title="Production by Asset" type="bar" />
-                <AnalyticsPanel :chartData="productionByStatusChart" title="Production by Well Status" type="bar" />
                 <AnalyticsPanel :chartData="campaignChart" title="Campaign Budgets" type="radar" />
                 <AnalyticsPanel :chartData="topWellsChart" title="Top Producing Wells" type="bar" />
               </div>

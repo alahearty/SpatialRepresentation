@@ -55,16 +55,12 @@
         }
     },
     template: `
-    <header class="bg-blue-900 text-white flex flex-col md:flex-row items-start md:items-center px-2 sm:px-6 py-3 shadow gap-2 md:gap-4">
-      <div class="flex items-center gap-2 flex-wrap w-full md:w-auto">
-        <h1 class="text-lg sm:text-2xl font-bold flex-1 text-center md:text-left">Spatial Dashboard</h1>
+    <header class="bg-blue-900 text-white flex flex-row items-center px-2 sm:px-6 py-3 shadow gap-2 md:gap-4 justify-between">
+      <div class="flex items-center gap-2 flex-shrink-0">
+        <h1 class="text-lg sm:text-2xl font-bold text-left">Spatial Dashboard</h1>
       </div>
-      <div class="flex flex-wrap items-center gap-2 w-full md:w-auto mt-2 md:mt-0">
-        <label class="text-white text-sm">Field:</label>
-        <select class="rounded px-2 py-1 text-black" v-model="selectedField" @change="handleFieldChange">
-          <option value="">All Fields</option>
-          <option v-for="field in fields" :key="field.id" :value="field.name">{{ field.name }}</option>
-        </select>
+      <div class="flex flex-wrap items-center gap-2 justify-end w-full md:w-auto mt-2 md:mt-0">
+        <!-- Removed Field dropdown from header -->
         <label class="text-white text-sm">Upload:</label>
         <input type="text" class="rounded px-2 py-1 text-black w-32" :value="uploadFileName" readonly />
         <label class="bg-gray-200 text-black px-2 py-1 rounded cursor-pointer border border-gray-300 hover:bg-gray-300">
@@ -79,7 +75,6 @@
         <button class="bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded" @click="$emit('show-routes')">Routes</button>
         <button class="bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded" @click="$emit('show-statistics')">Show Statistics</button>
       </div>
-      
     </header>
   `
 };

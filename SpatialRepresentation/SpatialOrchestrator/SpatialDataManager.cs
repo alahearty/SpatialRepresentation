@@ -7,12 +7,13 @@ using Newtonsoft.Json.Serialization;
 namespace SpatialRepresentation.Models
 {
     /// <summary>
-    /// Manages spatial data for fields, wells, and routing operations
+    /// Manages spatial data for fields, wells, flow stations, and routing operations
     /// </summary>
     public class SpatialDataManager
     {
         private List<Field> _fields;
         private List<Route> _routes;
+        private List<FlowStation> _flowStations;
         public List<GeoLocation> ConcessionBoundary { get; set; }
 
         /// <summary>
@@ -34,12 +35,22 @@ namespace SpatialRepresentation.Models
         }
 
         /// <summary>
+        /// Collection of all flow stations
+        /// </summary>
+        public List<FlowStation> FlowStations
+        {
+            get => _flowStations;
+            set => _flowStations = value ?? new List<FlowStation>();
+        }
+
+        /// <summary>
         /// Default constructor
         /// </summary>
         public SpatialDataManager()
         {
             Fields = new List<Field>();
             Routes = new List<Route>();
+            FlowStations = new List<FlowStation>();
             ConcessionBoundary = new List<GeoLocation>();
         }
 
@@ -52,6 +63,18 @@ namespace SpatialRepresentation.Models
             if (field != null && !Fields.Any(f => f.Id == field.Id))
             {
                 Fields.Add(field);
+            }
+        }
+
+        /// <summary>
+        /// Adds a flow station to the collection
+        /// </summary>
+        /// <param name="flowStation">Flow station to add</param>
+        public void AddFlowStation(FlowStation flowStation)
+        {
+            if (flowStation != null && !FlowStations.Any(fs => fs.Id == flowStation.Id))
+            {
+                FlowStations.Add(flowStation);
             }
         }
 
@@ -121,6 +144,16 @@ namespace SpatialRepresentation.Models
         }
 
         /// <summary>
+        /// Gets a flow station by its ID
+        /// </summary>
+        /// <param name="flowStationId">Flow station ID</param>
+        /// <returns>Flow station or null if not found</returns>
+        public FlowStation GetFlowStation(string flowStationId)
+        {
+            return FlowStations.FirstOrDefault(fs => fs.Id == flowStationId);
+        }
+
+        /// <summary>
         /// Creates a route between two wells
         /// </summary>
         /// <param name="sourceWellId">Source well ID</param>
@@ -170,7 +203,7 @@ namespace SpatialRepresentation.Models
                 NullValueHandling = NullValueHandling.Ignore
             };
 
-            // Structure the output to include boundary, fields, and all well/field properties
+            // Structure the output to include boundary, fields, flow stations, and all well/field properties
             var output = new
             {
                 concessionBoundary = ConcessionBoundary?.Select(g => new { lat = g.Latitude, lng = g.Longitude }).ToList(),
@@ -203,9 +236,16 @@ namespace SpatialRepresentation.Models
                         block = w.Block,
                         geologicDescription = w.GeologicDescription,
                         trajectory = w.Trajectory?.Select(t => new { lat = t.Latitude, lng = t.Longitude }).ToList(),
+                        flowStationId = w.FlowStationId,
+                        flowStationName = w.FlowStationName,
                         metadata = w.Metadata
                     }).ToList(),
                     metadata = f.Metadata
+                }).ToList(),
+                flowStations = FlowStations.Select(fs => new {
+                    id = fs.Id,
+                    name = fs.Name,
+                    location = fs.Location != null ? new { lat = fs.Location.Latitude, lng = fs.Location.Longitude } : null
                 }).ToList()
             };
 
@@ -213,17 +253,32 @@ namespace SpatialRepresentation.Models
         }
 
         /// <summary>
-        /// Creates sample data for testing
+        /// Creates large sample data for testing
         /// </summary>
         public void CreateSampleData()
         {
             // Clear existing data
             Fields.Clear();
             Routes.Clear();
+            FlowStations.Clear();
 
-            // Create sample fields
+            // Create sample flow stations first
+            var flowStation1 = new FlowStation("Flow Station Alpha", 5.55, 7.05);
+            var flowStation2 = new FlowStation("Flow Station Beta", 5.35, 6.25);
+            var flowStation3 = new FlowStation("Flow Station Gamma", 5.95, 6.45);
+            var flowStation4 = new FlowStation("Flow Station Delta", 5.25, 6.85);
+            var flowStation5 = new FlowStation("Flow Station Echo", 5.75, 7.35);
+
+            AddFlowStation(flowStation1);
+            AddFlowStation(flowStation2);
+            AddFlowStation(flowStation3);
+            AddFlowStation(flowStation4);
+            AddFlowStation(flowStation5);
+
+            // Create sample fields with large datasets
             var colorPalette = new[] { "#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231", "#911eb4", "#46f0f0", "#f032e6", "#bcf60c", "#fabebe", "#008080", "#e6beff", "#9a6324", "#fffac8", "#800000", "#aaffc3", "#808000", "#ffd8b1", "#000075", "#808080" };
 
+            // Field 1: Niger Delta Field A
             var field1 = new Field("Niger Delta Field A", 5.5, 7.0)
             {
                 Operator = "Shell Nigeria",
@@ -236,6 +291,25 @@ namespace SpatialRepresentation.Models
                 GeologicDescription = "Deltaic reservoir with stacked sands."
             };
 
+            // Add 15 wells to Field A
+            for (int i = 1; i <= 15; i++)
+            {
+                var well = new Well($"Well-A-{i:D2}", i % 3 == 0 ? "Gas" : "Oil", 2000 + (i * 100), 5.45 + (i * 0.01), 6.95 + (i * 0.01))
+                {
+                    Status = i % 4 == 0 ? "Inactive" : "Active",
+                    CompletionDate = new DateTime(1992 + (i % 5), (i % 12) + 1, (i % 28) + 1),
+                    ProductionRate = i % 4 == 0 ? 0 : 1000 + (i * 50),
+                    Operator = "Shell Nigeria",
+                    Formation = "Agbada Formation",
+                    Block = "1-AB1",
+                    GeologicDescription = $"Well {i} in stacked sand.",
+                    FlowStationId = flowStation1.Id,
+                    FlowStationName = flowStation1.Name
+                };
+                field1.AddWell(well);
+            }
+
+            // Field 2: Niger Delta Field B
             var field2 = new Field("Niger Delta Field B", 5.8, 7.2)
             {
                 Operator = "ExxonMobil",
@@ -248,126 +322,143 @@ namespace SpatialRepresentation.Models
                 GeologicDescription = "Deep marine turbidite reservoir."
             };
 
-            // Add wells to Field A
-            var wellA1 = new Well("Well-A-01", "Oil", 2500, 5.45, 6.95)
+            // Add 12 wells to Field B
+            for (int i = 1; i <= 12; i++)
             {
+                var well = new Well($"Well-B-{i:D2}", i % 2 == 0 ? "Oil" : "Gas", 2500 + (i * 150), 5.75 + (i * 0.015), 7.15 + (i * 0.015))
+                {
+                    Status = i % 5 == 0 ? "Inactive" : "Active",
+                    CompletionDate = new DateTime(1987 + (i % 8), (i % 12) + 1, (i % 28) + 1),
+                    ProductionRate = i % 5 == 0 ? 0 : 1200 + (i * 75),
+                    Operator = "ExxonMobil",
+                    Formation = "Akata Formation",
+                    Block = "E1000",
+                    GeologicDescription = $"Well {i} in deep marine sand.",
+                    FlowStationId = flowStation2.Id,
+                    FlowStationName = flowStation2.Name
+                };
+                field2.AddWell(well);
+            }
+
+            // Field 3: Niger Delta Field C
+            var field3 = new Field("Niger Delta Field C", 5.3, 6.8)
+            {
+                Operator = "Chevron Nigeria",
                 Status = "Active",
-                CompletionDate = new DateTime(1992, 3, 10),
-                ProductionRate = 1500, // barrels per day
-                Operator = "Shell Nigeria",
-                Trajectory = new List<GeoLocation> {
-                    new GeoLocation(5.45, 6.95),
-                    new GeoLocation(5.451, 6.951),
-                    new GeoLocation(5.452, 6.952)
-                },
+                DiscoveryDate = new DateTime(1995, 3, 10),
+                EstimatedReserves = 300000000, // 300 million BOE
+                Color = colorPalette[2],
+                Formation = "Benin Formation",
+                Block = "2-AB2",
+                GeologicDescription = "Shallow marine reservoir."
+            };
+
+            // Add 10 wells to Field C
+            for (int i = 1; i <= 10; i++)
+            {
+                var well = new Well($"Well-C-{i:D2}", i % 3 == 0 ? "Water" : "Oil", 1800 + (i * 80), 5.25 + (i * 0.02), 6.75 + (i * 0.02))
+                {
+                    Status = i % 6 == 0 ? "Inactive" : "Active",
+                    CompletionDate = new DateTime(1996 + (i % 6), (i % 12) + 1, (i % 28) + 1),
+                    ProductionRate = i % 6 == 0 ? 0 : 800 + (i * 60),
+                    Operator = "Chevron Nigeria",
+                    Formation = "Benin Formation",
+                    Block = "2-AB2",
+                    GeologicDescription = $"Well {i} in shallow marine sand.",
+                    FlowStationId = flowStation3.Id,
+                    FlowStationName = flowStation3.Name
+                };
+                field3.AddWell(well);
+            }
+
+            // Field 4: Niger Delta Field D
+            var field4 = new Field("Niger Delta Field D", 5.6, 6.9)
+            {
+                Operator = "Total Nigeria",
+                Status = "Active",
+                DiscoveryDate = new DateTime(2000, 7, 5),
+                EstimatedReserves = 400000000, // 400 million BOE
+                Color = colorPalette[3],
                 Formation = "Agbada Formation",
-                Block = "1-AB1",
-                GeologicDescription = "Oil producer in stacked sand."
+                Block = "3-AB3",
+                GeologicDescription = "Deltaic reservoir with complex faulting."
             };
-            field1.AddWell(wellA1);
 
-            var wellA2 = new Well("Well-A-02", "Gas", 2800, 5.52, 7.02)
+            // Add 8 wells to Field D
+            for (int i = 1; i <= 8; i++)
             {
+                var well = new Well($"Well-D-{i:D2}", i % 2 == 0 ? "Gas" : "Oil", 2200 + (i * 120), 5.55 + (i * 0.025), 6.85 + (i * 0.025))
+                {
+                    Status = i % 7 == 0 ? "Inactive" : "Active",
+                    CompletionDate = new DateTime(2001 + (i % 7), (i % 12) + 1, (i % 28) + 1),
+                    ProductionRate = i % 7 == 0 ? 0 : 900 + (i * 70),
+                    Operator = "Total Nigeria",
+                    Formation = "Agbada Formation",
+                    Block = "3-AB3",
+                    GeologicDescription = $"Well {i} in complex faulted reservoir.",
+                    FlowStationId = flowStation4.Id,
+                    FlowStationName = flowStation4.Name
+                };
+                field4.AddWell(well);
+            }
+
+            // Field 5: Niger Delta Field E
+            var field5 = new Field("Niger Delta Field E", 5.7, 7.3)
+            {
+                Operator = "Eni Nigeria",
                 Status = "Active",
-                CompletionDate = new DateTime(1993, 7, 15),
-                ProductionRate = 25, // mcf per day
-                Operator = "Shell Nigeria",
-                Trajectory = new List<GeoLocation> {
-                    new GeoLocation(5.52, 7.02),
-                    new GeoLocation(5.521, 7.021),
-                    new GeoLocation(5.522, 7.022)
-                },
-                Formation = "Agbada Formation",
-                Block = "1-AB1",
-                GeologicDescription = "Gas producer in upper sand."
-            };
-            field1.AddWell(wellA2);
-
-            var wellA3 = new Well("Well-A-03", "Oil", 2200, 5.48, 7.05)
-            {
-                Status = "Inactive",
-                CompletionDate = new DateTime(1994, 11, 8),
-                ProductionRate = 0,
-                Operator = "Shell Nigeria",
-                Trajectory = new List<GeoLocation> {
-                    new GeoLocation(5.48, 7.05),
-                    new GeoLocation(5.481, 7.051),
-                    new GeoLocation(5.482, 7.052)
-                },
-                Formation = "Agbada Formation",
-                Block = "1-AB1",
-                GeologicDescription = "Inactive oil well."
-            };
-            field1.AddWell(wellA3);
-
-            // Add wells to Field B
-            var wellB1 = new Well("Well-B-01", "Oil", 3000, 5.75, 7.15)
-            {
-                Status = "Active",
-                CompletionDate = new DateTime(1987, 4, 12),
-                ProductionRate = 2200, // barrels per day
-                Operator = "ExxonMobil",
-                Trajectory = new List<GeoLocation> {
-                    new GeoLocation(5.75, 7.15),
-                    new GeoLocation(5.751, 7.151),
-                    new GeoLocation(5.752, 7.152)
-                },
+                DiscoveryDate = new DateTime(2005, 11, 20),
+                EstimatedReserves = 600000000, // 600 million BOE
+                Color = colorPalette[4],
                 Formation = "Akata Formation",
-                Block = "E1000A",
-                GeologicDescription = "Oil producer in deep marine sand."
+                Block = "4-AB4",
+                GeologicDescription = "Deep marine turbidite with high pressure."
             };
-            field2.AddWell(wellB1);
 
-            var wellB2 = new Well("Well-B-02", "Gas", 3200, 5.82, 7.25)
+            // Add 6 wells to Field E
+            for (int i = 1; i <= 6; i++)
             {
-                Status = "Active",
-                CompletionDate = new DateTime(1988, 9, 20),
-                ProductionRate = 35, // mcf per day
-                Operator = "ExxonMobil",
-                Trajectory = new List<GeoLocation> {
-                    new GeoLocation(5.82, 7.25),
-                    new GeoLocation(5.821, 7.251),
-                    new GeoLocation(5.822, 7.252)
-                },
-                Formation = "Akata Formation",
-                Block = "E1000B",
-                GeologicDescription = "Gas producer in channel sand."
-            };
-            field2.AddWell(wellB2);
+                var well = new Well($"Well-E-{i:D2}", i % 3 == 0 ? "Gas" : "Oil", 2800 + (i * 200), 5.65 + (i * 0.03), 7.25 + (i * 0.03))
+                {
+                    Status = i % 8 == 0 ? "Inactive" : "Active",
+                    CompletionDate = new DateTime(2006 + (i % 8), (i % 12) + 1, (i % 28) + 1),
+                    ProductionRate = i % 8 == 0 ? 0 : 1500 + (i * 100),
+                    Operator = "Eni Nigeria",
+                    Formation = "Akata Formation",
+                    Block = "4-AB4",
+                    GeologicDescription = $"Well {i} in high pressure reservoir.",
+                    FlowStationId = flowStation5.Id,
+                    FlowStationName = flowStation5.Name
+                };
+                field5.AddWell(well);
+            }
 
-            var wellB3 = new Well("Well-B-03", "Water", 1800, 5.78, 7.18)
-            {
-                Status = "Active",
-                CompletionDate = new DateTime(1989, 2, 14),
-                ProductionRate = 500, // barrels per day
-                Operator = "ExxonMobil",
-                Trajectory = new List<GeoLocation> {
-                    new GeoLocation(5.78, 7.18),
-                    new GeoLocation(5.781, 7.181),
-                    new GeoLocation(5.782, 7.182)
-                },
-                Formation = "Akata Formation",
-                Block = "E1000X",
-                GeologicDescription = "Water injector."
-            };
-            field2.AddWell(wellB3);
-
-            // Add fields to manager
+            // Add all fields to manager
             AddField(field1);
             AddField(field2);
+            AddField(field3);
+            AddField(field4);
+            AddField(field5);
 
-            // Create some sample routes
-            var route1 = CreateRoute(
-                field1.Wells[0].Id, // Well-A-01
-                field1.Wells[1].Id, // Well-A-02
-                "Route within Field A"
-            );
+            // Create some sample routes between wells
+            var allWells = GetAllWells().Where(w => w.Status == "Active").ToList();
+            var random = new Random(42); // Fixed seed for reproducible results
 
-            var route2 = CreateRoute(
-                field1.Wells[0].Id, // Well-A-01
-                field2.Wells[0].Id, // Well-B-01
-                "Inter-field Route"
-            );
+            // Create 20 random routes between active wells
+            for (int i = 0; i < 20; i++)
+            {
+                var sourceWell = allWells[random.Next(allWells.Count)];
+                var destWell = allWells[random.Next(allWells.Count)];
+                
+                if (sourceWell.Id != destWell.Id)
+                {
+                    var route = CreateRoute(
+                        sourceWell.Id,
+                        destWell.Id,
+                        $"Route {i + 1}: {sourceWell.Name} to {destWell.Name}"
+                    );
+                }
+            }
         }
 
         /// <summary>
@@ -385,6 +476,7 @@ namespace SpatialRepresentation.Models
                 ["TotalWells"] = allWells.Count,
                 ["ActiveWells"] = activeWells.Count,
                 ["TotalRoutes"] = Routes.Count,
+                ["TotalFlowStations"] = FlowStations.Count,
                 ["OilWells"] = allWells.Count(w => string.Equals(w.Type, "Oil", StringComparison.OrdinalIgnoreCase)),
                 ["GasWells"] = allWells.Count(w => string.Equals(w.Type, "Gas", StringComparison.OrdinalIgnoreCase)),
                 ["WaterWells"] = allWells.Count(w => string.Equals(w.Type, "Water", StringComparison.OrdinalIgnoreCase)),
