@@ -129,9 +129,6 @@
     <Content Include="Resources\components\MapContainer.js">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-    <Content Include="Resources\components\RouteModal.js">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
     <Content Include="Resources\components\Sidebar.js">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
@@ -142,6 +139,9 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
     <Content Include="Resources\index.html">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Resources\modals\RouteModal.js">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
     <Content Include="Resources\modals\StatisticsModal.js">

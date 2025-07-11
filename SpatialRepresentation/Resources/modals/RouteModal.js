@@ -31,7 +31,7 @@ window.RouteModal = {
       }
     },
     template: `
-      <div v-if="show" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+      <div v-if="show" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50" style="z-index: 9999;">
         <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
           <h3 class="text-xl font-bold mb-4">🚀 Route Between Wells</h3>
           <div class="mb-3">
