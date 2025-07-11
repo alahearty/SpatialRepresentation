@@ -36,9 +36,7 @@
             }
         },
         handleRouteWells() {
-            if (window.chrome && window.chrome.webview) {
-                window.chrome.webview.postMessage('ROUTE_WELLS');
-            }
+            this.$emit('open-route-modal');
         },
         handleInfo() {
             if (window.chrome && window.chrome.webview) {
@@ -76,9 +74,10 @@
         <button class="bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded" @click="handleUpload">Upload</button>
         <button class="bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded" @click="handleExportGeoJson">Export GeoJSON</button>
         <button class="bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded" @click="handleRouteWells">Route Wells</button>
-        <button class="bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded" @click="handleInfo">Info</button>
-        <button class="bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded" @click="handleRoutes">Routes</button>
-        <button class="bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded" @click="handleShowStatistics">Show Statistics</button>
+        <button class="bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded" @click="$emit('open-route-modal')">Open Route Modal</button>
+        <button class="bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded" @click="$emit('show-info')">Info</button>
+        <button class="bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded" @click="$emit('show-routes')">Routes</button>
+        <button class="bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded" @click="$emit('show-statistics')">Show Statistics</button>
       </div>
       
     </header>

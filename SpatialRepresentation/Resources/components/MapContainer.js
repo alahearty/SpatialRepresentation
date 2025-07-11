@@ -11,7 +11,9 @@ window.MapContainer = {
         flowStationMarkers: [],
         flowLines: [],
         routeLine: null,
-        routePopup: null
+        routePopup: null,
+        routingControl: null, // Added for routing control
+        productionLegend: null // Added for production legend
       };
     },
     watch: {
@@ -44,15 +46,57 @@ window.MapContainer = {
       }
     },
     mounted() {
-      if (this.visible) {
-        this.initMap();
-      }
-      // Debounced resize handler
-      this.debouncedInvalidateMapSize = () => {
-        clearTimeout(this._resizeTimeout);
-        this._resizeTimeout = setTimeout(() => this.invalidateMapSize(), 200);
+      // --- Advanced Map Initialization ---
+      // Base tile layers
+      const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors'
+      });
+      const esriSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        attribution: 'Tiles © Esri'
+      });
+      const stamenTerrain = L.tileLayer('https://stamen-tiles.a.ssl.fastly.net/terrain/{z}/{x}/{y}.jpg', {
+        maxZoom: 18,
+        attribution: 'Map tiles by Stamen Design'
+      });
+      this.map = L.map(this.$refs.map, {
+        center: [5.5, 7.0],
+        zoom: 9,
+        layers: [osm]
+      });
+      const baseMaps = {
+        'OpenStreetMap': osm,
+        'Satellite': esriSat,
+        'Terrain': stamenTerrain
       };
-      window.addEventListener('resize', this.debouncedInvalidateMapSize);
+      L.control.layers(baseMaps).addTo(this.map);
+      L.Control.geocoder().addTo(this.map);
+      // Draw control
+      const drawnItems = new L.FeatureGroup();
+      this.map.addLayer(drawnItems);
+      const drawControl = new L.Control.Draw({
+        draw: {
+          polygon: true,
+          polyline: false,
+          rectangle: false,
+          circle: false,
+          marker: true
+        },
+        edit: {
+          featureGroup: drawnItems
+        }
+      });
+      this.map.addControl(drawControl);
+      // --- End Advanced Map Initialization ---
+      this.renderMap();
+      this.$nextTick(() => this.invalidateMapSize());
+      // Notify C# that the map is ready
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage('MAP_READY');
+      }
+      // Add production legend
+      this.addProductionLegend();
     },
     beforeUnmount() {
       window.removeEventListener('resize', this.debouncedInvalidateMapSize);
@@ -81,133 +125,139 @@ window.MapContainer = {
           window.chrome.webview.postMessage('MAP_READY');
         }
       },
-      renderMap() {
-        if (!this.map) return;
-        // Remove old markers and polygons
-        if (this.wellMarkers) this.wellMarkers.forEach(m => this.map.removeLayer(m));
-        this.wellMarkers = [];
-        if (this.boundaryLayer) this.map.removeLayer(this.boundaryLayer);
-        if (this.flowStationMarkers) this.flowStationMarkers.forEach(m => this.map.removeLayer(m));
-        this.flowStationMarkers = [];
-        if (this.flowLines) this.flowLines.forEach(l => this.map.removeLayer(l));
-        this.flowLines = [];
-        if (this.routeLine) { this.map.removeLayer(this.routeLine); this.routeLine = null; }
-        if (this.routePopup) { this.map.removeLayer(this.routePopup); this.routePopup = null; }
-
-        // Draw wells (first)
-        this.fields.forEach(field => {
-          (field.wells || []).forEach(well => {
-            if (well.location && well.location.lat && well.location.lng) {
-              const marker = L.circleMarker([well.location.lat, well.location.lng], {
-                color: 'blue',
-                radius: 8,
-                fillOpacity: 0.8
-              }).addTo(this.map);
-              marker.bindPopup(`<b>${well.name}</b><br>Status: ${well.status}<br>Type: ${well.type || ''}`);
-              this.wellMarkers.push(marker);
+      getProductionColor(rate) {
+        if (rate > 100) return '#e6194b'; // high
+        if (rate > 50) return '#ffe119';  // medium
+        return '#3cb44b';                 // low
+      },
+      computeConvexHull(points) {
+        points.sort((a, b) => a.lat === b.lat ? a.lng - b.lng : a.lat - b.lat);
+        const cross = (o, a, b) => (a.lat - o.lat) * (b.lng - o.lng) - (a.lng - o.lng) * (b.lat - o.lat);
+        const lower = [], upper = [];
+        for (let p of points) {
+          while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+          lower.push(p);
+        }
+        for (let i = points.length - 1; i >= 0; i--) {
+          const p = points[i];
+          while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+          upper.push(p);
+        }
+        upper.pop(); lower.pop();
+        return lower.concat(upper);
+      },
+      renderField(field, showRoute = true) {
+        if (!field?.location || field.location.lat == null || field.location.lng == null) return;
+        const { lat, lng } = field.location;
+        const fieldMarker = L.marker([lat, lng], {
+          icon: L.icon({
+            iconUrl: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png',
+            iconSize: [32, 32],
+            iconAnchor: [16, 32],
+            popupAnchor: [0, -32]
+          })
+        }).addTo(this.map);
+        fieldMarker.bindPopup(`
+          <b>Field:</b> ${field.name || field.fieldName}<br>
+          <b>Status:</b> ${field.status || ''}<br>
+          <b>Formation:</b> ${field.formation || ''}<br>
+          <b>Block:</b> ${field.block || ''}<br>
+          <b>Estimated Reserves:</b> ${field.estimatedReserves || 'N/A'}<br>
+        `);
+        const routePoints = [];
+        if (Array.isArray(field.wells)) {
+          field.wells.forEach(well => {
+            if (!well?.location || well.location.lat == null || well.location.lng == null) return;
+            const { lat, lng } = well.location;
+            let size = 32;
+            if (typeof well.productionRate === 'number' && well.productionRate > 0) {
+              size = 32 + Math.min(18, Math.sqrt(well.productionRate));
             }
-          });
-        });
-
-        // Draw flow stations (second)
-        if (this.flowStations && this.flowStations.length) {
-          this.flowStations.forEach(fs => {
-            if (fs.location && fs.location.lat && fs.location.lng) {
-              const marker = L.circleMarker([fs.location.lat, fs.location.lng], {
-                color: '#b45309',
-                fillColor: 'orange',
-                fillOpacity: 1,
-                radius: 10,
-                weight: 3
+            const iconColor = this.getProductionColor(well.productionRate);
+            const wellMarker = L.circleMarker([lat, lng], {
+              radius: size / 4,
+              fillColor: iconColor,
+              color: '#333',
+              weight: 1,
+              fillOpacity: 0.7
+            }).addTo(this.map);
+            wellMarker.bindPopup(`
+              <b>Well:</b> ${well.name}<br>
+              <b>Type:</b> ${well.type}<br>
+              <b>Status:</b> ${well.status}<br>
+              <b>Production Rate:</b> ${well.productionRate || 'N/A'}<br>
+              <b>Depth:</b> ${well.depth} m<br>
+              <b>Formation:</b> ${well.formation}<br>
+              <b>Block:</b> ${well.block}<br>
+            `);
+            routePoints.push(L.latLng(lat, lng));
+            if (Array.isArray(well.trajectory) && well.trajectory.length > 1) {
+              const trajLatLngs = well.trajectory.map(pt => [pt.lat, pt.lng]);
+              L.polyline(trajLatLngs, {
+                color: '#0074D9',
+                weight: 3,
+                opacity: 0.7,
+                dashArray: '5, 5'
               }).addTo(this.map);
-              marker.bindPopup(`<b>${fs.name}</b><br>Flow Station`);
-              if (!this.flowStationMarkers) this.flowStationMarkers = [];
-              this.flowStationMarkers.push(marker);
             }
           });
         }
-
-        // Draw flow lines/arrows (after markers)
-        this.fields.forEach(field => {
-          (field.wells || []).forEach(well => {
-            if (well.location && well.location.lat && well.location.lng && well.flowStationId) {
-              const fs = (this.flowStations || []).find(f => f.id === well.flowStationId);
-              if (fs && fs.location && fs.location.lat && fs.location.lng) {
-                // Dotted line
-                const line = L.polyline([
-                  [well.location.lat, well.location.lng],
-                  [fs.location.lat, fs.location.lng]
-                ], {
-                  color: '#b45309',
-                  dashArray: '6, 8',
-                  weight: 2
-                }).addTo(this.map);
-                if (!this.flowLines) this.flowLines = [];
-                this.flowLines.push(line);
-                // Try to add arrowhead if PolylineDecorator is available
-                if (window.L && L.polylineDecorator && L.Symbol && L.Symbol.arrowHead) {
-                  const arrowHead = L.polylineDecorator(line, {
-                    patterns: [
-                      {
-                        offset: '100%',
-                        repeat: 0,
-                        symbol: L.Symbol.arrowHead({ pixelSize: 12, polygon: false, pathOptions: { stroke: true, color: '#b45309', weight: 2 } })
-                      }
-                    ]
-                  });
-                  arrowHead.addTo(this.map);
-                  this.flowLines.push(arrowHead);
-                }
-              }
-            }
-          });
-        });
-
-        // Draw route if present
-        if (this.route && this.route.source && this.route.dest) {
-          const src = this.route.source.location;
-          const dst = this.route.dest.location;
-          this.routeLine = L.polyline([
-            [src.lat, src.lng],
-            [dst.lat, dst.lng]
-          ], {
-            color: '#2563eb',
-            weight: 4,
-            opacity: 0.8
+        if (routePoints.length > 2) {
+          const hullPoints = this.computeConvexHull(routePoints.map(p => ({ lat: p.lat, lng: p.lng })));
+          const latLngs = hullPoints.map(p => [p.lat, p.lng]);
+          const polygon = L.polygon(latLngs, {
+            color: field.color || '#000000',
+            fillColor: field.color || '#000000',
+            fillOpacity: 0.3
           }).addTo(this.map);
-          // Add arrowhead if possible
-          if (window.L && L.polylineDecorator && L.Symbol && L.Symbol.arrowHead) {
-            const arrowHead = L.polylineDecorator(this.routeLine, {
-              patterns: [
-                {
-                  offset: '100%',
-                  repeat: 0,
-                  symbol: L.Symbol.arrowHead({ pixelSize: 16, polygon: false, pathOptions: { stroke: true, color: '#2563eb', weight: 4 } })
-                }
-              ]
-            });
-            arrowHead.addTo(this.map);
+          polygon.bindTooltip(`Field: ${field.name || field.fieldName}<br>Wells: ${field.wells.length}`, { sticky: true });
+        }
+        if (showRoute && routePoints.length > 1) {
+          if (this.routingControl) {
+            this.map.removeControl(this.routingControl);
+            this.routingControl = null;
           }
-          // Show popup with metadata at midpoint
-          const midLat = (src.lat + dst.lat) / 2;
-          const midLng = (src.lng + dst.lng) / 2;
-          const dist = this.route.distance > 1000 ? (this.route.distance/1000).toFixed(2) + ' km' : Math.round(this.route.distance) + ' m';
-          const time = this.route.time > 60 ? (this.route.time/60).toFixed(1) + ' hr' : Math.round(this.route.time) + ' min';
-          const meta = `<b>Route Info</b><br>From: ${this.route.source.name}<br>To: ${this.route.dest.name}<br>Distance: ${dist}<br>Est. Time: ${time}<br>Type: ${this.route.type}`;
-          this.routePopup = L.popup({ closeButton: false, autoClose: false })
-            .setLatLng([midLat, midLng])
-            .setContent(meta)
-            .openOn(this.map);
-        }
-
-        // Draw boundary
-        if (this.boundary && this.boundary.length > 2) {
-          this.boundaryLayer = L.polygon(this.boundary.map(pt => [pt.lat, pt.lng]), {
-            color: 'blue', weight: 3, fill: false
+          this.routingControl = L.Routing.control({
+            waypoints: routePoints,
+            routeWhileDragging: false,
+            draggableWaypoints: false,
+            addWaypoints: false,
+            createMarker: () => null
           }).addTo(this.map);
         }
-        // Force map redraw
-        this.map.invalidateSize();
+      },
+      clearMap() {
+        this.map.eachLayer(layer => {
+          if (layer instanceof L.Marker || layer instanceof L.Polygon || (layer instanceof L.Polyline && layer.options.className === 'routing-line')) {
+            this.map.removeLayer(layer);
+          }
+        });
+        if (this.routingControl) {
+          this.map.removeControl(this.routingControl);
+          this.routingControl = null;
+        }
+      },
+      addProductionLegend() {
+        if (this.productionLegend) {
+          this.map.removeControl(this.productionLegend);
+        }
+        this.productionLegend = L.control({ position: 'bottomright' });
+        this.productionLegend.onAdd = function () {
+          const div = L.DomUtil.create('div', 'legend');
+          div.innerHTML = `
+            <b>Production Rate</b><br>
+            <span style="display:inline-block;width:16px;height:16px;background:#e6194b;border-radius:8px;margin-right:4px;"></span> High (&gt;100)<br>
+            <span style="display:inline-block;width:16px;height:16px;background:#ffe119;border-radius:8px;margin-right:4px;"></span> Medium (&gt;50)<br>
+            <span style="display:inline-block;width:16px;height:16px;background:#3cb44b;border-radius:8px;margin-right:4px;"></span> Low (&le;50)<br>
+          `;
+          return div;
+        };
+        this.productionLegend.addTo(this.map);
+      },
+      renderMap() {
+        this.clearMap();
+        // Render all fields and wells
+        (this.fields || []).forEach(field => this.renderField(field, false));
       },
       openRouteModal() {
         this.$emit('open-route-modal');
@@ -226,7 +276,7 @@ window.MapContainer = {
           <div><span style="display:inline-block;width:12px;height:12px;background:orange;border-radius:50%;margin-right:4px;border:2px solid #b45309;"></span>Flow Station</div>
           <div><svg width="24" height="8"><line x1="0" y1="4" x2="20" y2="4" stroke="#b45309" stroke-width="2" stroke-dasharray="6,8"/><polygon points="20,0 24,4 20,8" fill="#b45309"/></svg>Flow Line</div>
         </div>
-        <button @click="openRouteModal" class="absolute top-4 right-4 z-10 px-4 py-2 bg-blue-600 text-white rounded shadow">Open Route Modal</button>
+        <!-- Removed Open Route Modal button -->
       </div>
     `
   };

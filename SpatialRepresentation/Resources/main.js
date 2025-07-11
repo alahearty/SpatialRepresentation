@@ -18,7 +18,10 @@ createApp({
         Sidebar: window.Sidebar,
         MapContainer: window.MapContainer,
         RouteModal: window.RouteModal,
-        AnalyticsPanel: window.AnalyticsPanel
+        AnalyticsPanel: window.AnalyticsPanel,
+        InfoModal: window.InfoModal,
+        RoutesModal: window.RoutesModal,
+        StatisticsModal: window.StatisticsModal
     },
     setup() {
         fields = ref([]);
@@ -283,6 +286,12 @@ createApp({
         // Modal logic
         function openRouteModal() { showRouteModal.value = true; }
         function closeRouteModal() { showRouteModal.value = false; }
+        function handleAppHeaderEvent(event) {
+            if (event === 'open-route-modal') openRouteModal();
+            if (event === 'show-info') showInfoModal.value = true;
+            if (event === 'show-routes') showRoutesModal.value = true;
+            if (event === 'show-statistics') showStatisticsModal.value = true;
+        }
         function handleCreateRoute({ source, dest, type }) {
             // Find wells by id
             const allWells = assets.value.flatMap(a => a.fields.flatMap(f => f.wells));
@@ -295,8 +304,8 @@ createApp({
             const φ1 = toRad(src.location.lat), φ2 = toRad(dst.location.lat);
             const Δφ = toRad(dst.location.lat - src.location.lat);
             const Δλ = toRad(dst.location.lng - src.location.lng);
-            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
             const distance = R * c; // meters
             // Estimate time (simple): walking 5km/h, driving 50km/h, cycling 15km/h
             let speed = 5; // km/h
@@ -322,13 +331,74 @@ createApp({
         window.filterByField = handleFieldChange;
         window.showRouteModal = openRouteModal;
 
-        // Call updateCharts initially
         updateCharts();
-        updateFilters(); // Call updateFilters initially
+        updateFilters();
+
+        // Wells per Field Pie Chart
+        const wellsPerFieldPieChart = ref({
+            labels: ['Field A', 'Field B', 'Field C'],
+            datasets: [{
+                label: 'Wells',
+                data: [4, 4, 4],
+                backgroundColor: ['#f59e42', '#10b981', '#6366f1']
+            }]
+        });
+        // Well Status Distribution Pie Chart
+        const wellStatusPieChart = ref({
+            labels: ['Active', 'Inactive', 'Abandoned'],
+            datasets: [{
+                label: 'Wells',
+                data: [6, 3, 3],
+                backgroundColor: ['#22c55e', '#eab308', '#ef4444']
+            }]
+        });
+        // Active Wells Over Time Line Chart
+        const activeWellsOverTimeChart = ref({
+            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May'],
+            datasets: [{
+                label: 'Active Wells',
+                data: [8, 9, 10, 11, 12],
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59,130,246,0.2)',
+                fill: true
+            }]
+        });
+        // Production by Well Status Stacked Bar Chart
+        const productionByStatusChart = ref({
+            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May'],
+            datasets: [
+                {
+                    label: 'Active',
+                    data: [5000, 6000, 7000, 8000, 9000],
+                    backgroundColor: '#22c55e',
+                    stack: 'Status'
+                },
+                {
+                    label: 'Inactive',
+                    data: [1000, 1200, 1100, 1300, 1250],
+                    backgroundColor: '#eab308',
+                    stack: 'Status'
+                },
+                {
+                    label: 'Abandoned',
+                    data: [200, 300, 250, 400, 350],
+                    backgroundColor: '#ef4444',
+                    stack: 'Status'
+                }
+            ]
+        });
+
+        const showInfoModal = ref(false);
+        const showRoutesModal = ref(false);
+        const showStatisticsModal = ref(false);
+        function closeInfoModal() { showInfoModal.value = false; }
+        function closeRoutesModal() { showRoutesModal.value = false; }
+        function closeStatisticsModal() { showStatisticsModal.value = false; }
 
         return {
             fields, wells, boundary, showRouteModal, handleCreateRoute, filteredFields, closeRouteModal, filters, onFilterChange, activeTab, handleFieldChange,
-            assetChart, fieldChart, wellChart, productionChart, campaignChart, topWellsChart, flowStations, currentRoute
+            assetChart, fieldChart, wellChart, productionChart, campaignChart, topWellsChart, flowStations, currentRoute, wellsPerFieldPieChart, wellStatusPieChart, activeWellsOverTimeChart, productionByStatusChart,
+            showInfoModal, showRoutesModal, showStatisticsModal, closeInfoModal, closeRoutesModal, closeStatisticsModal
         };
     },
     mounted() {
@@ -339,11 +409,10 @@ createApp({
     },
     template: `
     <div class="min-h-screen bg-gray-100 flex flex-col">
-      <AppHeader :fields="fields" @field-change="handleFieldChange" />
+      <AppHeader :fields="fields" @field-change="handleFieldChange" @open-route-modal="() => handleAppHeaderEvent('open-route-modal')" @show-info="() => handleAppHeaderEvent('show-info')" @show-routes="() => handleAppHeaderEvent('show-routes')" @show-statistics="() => handleAppHeaderEvent('show-statistics')" />
       <!-- Tabs -->
       <nav class="bg-blue-100 px-2 sm:px-6 py-2 flex flex-wrap space-x-2 sm:space-x-4 border-b border-blue-300">
         <button :class="['px-4 py-2 rounded-t font-semibold', activeTab === 'Map' ? 'bg-white shadow text-blue-900' : 'text-blue-900 hover:bg-white']" @click="activeTab = 'Map'">Map</button>
-        <button :class="['px-4 py-2 rounded-t font-semibold', activeTab === 'Routing' ? 'bg-white shadow text-blue-900' : 'text-blue-900 hover:bg-white']" @click="activeTab = 'Routing'">Routing</button>
         <button :class="['px-4 py-2 rounded-t font-semibold', activeTab === 'Analytics' ? 'bg-white shadow text-blue-900' : 'text-blue-900 hover:bg-white']" @click="activeTab = 'Analytics'">Spatial Analytics</button>
       </nav>
       <!-- Main Content -->
@@ -353,22 +422,19 @@ createApp({
         <!-- Tab Content -->
         <main class="flex-1 flex flex-col space-y-4 w-full">
           <template v-if="activeTab === 'Map'">
-            <MapContainer :fields="filteredFields" :boundary="boundary" :visible="activeTab === 'Map'" :flowStations="flowStations" :route="currentRoute" @open-route-modal="showRouteModal = true" class="flex-1 min-h-[300px] h-[40vh] md:h-[60vh]" />
-          </template>
-          <template v-else-if="activeTab === 'Routing'">
-            <div class="flex flex-col items-center justify-center h-full py-10">
-              <h2 class="text-xl font-bold mb-4">Routing Tools</h2>
-              <p class="mb-4">Use the map and controls above to create and analyze well-to-well or field-to-field routes.</p>
-              <button class="bg-blue-700 hover:bg-blue-600 px-4 py-2 rounded text-white" @click="showRouteModal = true">Open Route Modal</button>
-            </div>
+            <MapContainer :fields="filteredFields" :boundary="boundary" :visible="true" :flowStations="flowStations" :route="currentRoute" @open-route-modal="showRouteModal = true" class="flex-1 min-h-[300px] h-[40vh] md:h-[60vh]" />
           </template>
           <template v-else-if="activeTab === 'Analytics'">
             <div class="flex flex-col items-center w-full">
               <div class="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                <AnalyticsPanel :chartData="fieldChart" title="Wells per Field" type="pie" />
-                <AnalyticsPanel :chartData="wellChart" title="Well Status Distribution" type="doughnut" />
+                <AnalyticsPanel :chartData="fieldChart" title="Wells per Field (Bar)" type="bar" />
+                <AnalyticsPanel :chartData="wellsPerFieldPieChart" title="Wells per Field (Pie)" type="pie" />
+                <AnalyticsPanel :chartData="wellChart" title="Well Status Distribution (Bar)" type="bar" />
+                <AnalyticsPanel :chartData="wellStatusPieChart" title="Well Status Distribution (Pie)" type="pie" />
                 <AnalyticsPanel :chartData="productionChart" title="Monthly Production" type="line" />
+                <AnalyticsPanel :chartData="activeWellsOverTimeChart" title="Active Wells Over Time" type="line" />
                 <AnalyticsPanel :chartData="assetChart" title="Production by Asset" type="bar" />
+                <AnalyticsPanel :chartData="productionByStatusChart" title="Production by Well Status" type="bar" />
                 <AnalyticsPanel :chartData="campaignChart" title="Campaign Budgets" type="radar" />
                 <AnalyticsPanel :chartData="topWellsChart" title="Top Producing Wells" type="bar" />
               </div>
@@ -376,7 +442,10 @@ createApp({
           </template>
         </main>
       </div>
-      <RouteModal :wells="wells" :show="showRouteModal" @close="closeRouteModal" @create-route="handleCreateRoute" />
+      <RouteModal :wells="(wells && wells.length) ? wells : [{id: 'dummy1', name: 'Well Alpha'}, {id: 'dummy2', name: 'Well Beta'}]" :show="showRouteModal" @close="closeRouteModal" @create-route="handleCreateRoute" />
+      <InfoModal :show="showInfoModal" @close="closeInfoModal" />
+      <RoutesModal :show="showRoutesModal" @close="closeRoutesModal" />
+      <StatisticsModal :show="showStatisticsModal" @close="closeStatisticsModal" />
     </div>
   `
 }).mount('#app');
